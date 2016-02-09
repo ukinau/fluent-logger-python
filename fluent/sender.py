@@ -4,6 +4,7 @@ from __future__ import print_function
 import socket
 import threading
 import time
+import traceback
 
 import msgpack
 
@@ -53,11 +54,37 @@ class FluentSender(object):
         cur_time = int(time.time())
         self.emit_with_time(label, cur_time, data)
 
+    def _instance_to_hashmap(self, hashmap):
+        for k, v in hashmap.items():
+            if isinstance(v, dict):
+                self._instance_to_hashmap(v)
+            if hasattr(v, "__dict__"):
+                hashmap[k] = v.__dict__
+                self._instance_to_hashmap(hashmap[k])
+
     def emit_with_time(self, label, timestamp, data):
-        bytes_ = self._make_packet(label, timestamp, data)
+        try:
+            bytes_ = self._make_packet(label, timestamp, data)
+        except Exception:
+            try:
+                # _make_packet isn't supported hashmap containing object
+                # and raise Exception. So if Exception is catched, try
+                # to transform instance contained in hashmap into map
+                # and retry to _make_packet
+                self._instance_to_hashmap(data)
+                bytes_ = self._make_packet(label, timestamp, data, default=str)
+            except Exception:
+                bytes_ = self._make_packet(label, timestamp,
+                                           {"level": "CRITICAL",
+                                            "module": "fluent-logger",
+                                            "message": "Can't output log",
+                                            "hostname": socket.
+                                               gethostname(),
+                                            "traceback": traceback.
+                                               format_exc()})
         self._send(bytes_)
 
-    def _make_packet(self, label, timestamp, data):
+    def _make_packet(self, label, timestamp, data, default=None):
         if label:
             tag = '.'.join((self.tag, label))
         else:
@@ -65,7 +92,7 @@ class FluentSender(object):
         packet = (tag, timestamp, data)
         if self.verbose:
             print(packet)
-        return msgpack.packb(packet)
+        return msgpack.packb(packet, default=default)
 
     def _send(self, bytes_):
         self.lock.acquire()
