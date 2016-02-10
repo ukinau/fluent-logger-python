@@ -64,24 +64,16 @@ class FluentSender(object):
 
     def emit_with_time(self, label, timestamp, data):
         try:
-            bytes_ = self._make_packet(label, timestamp, data)
+            bytes_ = self._make_packet(label, timestamp, data, default=str)
         except Exception:
-            try:
-                # _make_packet isn't supported hashmap containing object
-                # and raise Exception. So if Exception is catched, try
-                # to transform instance contained in hashmap into map
-                # and retry to _make_packet
-                self._instance_to_hashmap(data)
-                bytes_ = self._make_packet(label, timestamp, data, default=str)
-            except Exception:
-                bytes_ = self._make_packet(label, timestamp,
-                                           {"level": "CRITICAL",
-                                            "module": "fluent-logger",
-                                            "message": "Can't output log",
-                                            "hostname": socket.
-                                               gethostname(),
-                                            "traceback": traceback.
-                                               format_exc()})
+            bytes_ = self._make_packet(label, timestamp,
+                                       {"level": "CRITICAL",
+                                        "module": "fluent-logger",
+                                        "message": "Can't output log",
+                                        "hostname": socket.
+                                           gethostname(),
+                                        "traceback": traceback.
+                                           format_exc()})
         self._send(bytes_)
 
     def _make_packet(self, label, timestamp, data, default=None):
